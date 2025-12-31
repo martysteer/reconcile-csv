@@ -301,11 +301,16 @@
       response)))
 
 ;; Middleware Stack
+;; Order matters! Middleware wraps from bottom to top, so:
+;; 1. Request enters wrap-cors (outermost)
+;; 2. Request goes to wrap-params (parses query parameters)
+;; 3. Request goes to wrap-request-logger (logs with parsed params)
+;; 4. Request reaches app-routes (innermost)
 
 (def app
   (-> app-routes
-      wrap-params
-      wrap-request-logger  ; Add request logging
+      wrap-request-logger  ; Logs requests (needs parsed params)
+      wrap-params          ; Parses query parameters
       (wrap-cors :access-control-allow-origin [#".*"]
                  :access-control-allow-methods [:get :post :put :delete :options]
                  :access-control-allow-headers ["Content-Type" "Authorization"])))
