@@ -1,0 +1,82 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix ex: <http://example.org/vocab/> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+
+# Concept Scheme
+ex:TestVocabulary a skos:ConceptScheme ;
+    skos:prefLabel "Test Vocabulary"@en ;
+    skos:prefLabel "Vocabulaire de test"@fr .
+
+# Concept 1: Architecture
+ex:architecture a skos:Concept ;
+    skos:prefLabel "Architecture"@en ;
+    skos:prefLabel "Architektur"@de ;
+    skos:altLabel "Building design"@en ;
+    skos:altLabel "Architectural design"@en ;
+    skos:definition "The art and science of designing buildings and other physical structures"@en ;
+    skos:notation "720" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:broader ex:art ;
+    skos:narrower ex:gothic, ex:modernism .
+
+# Concept 2: Art
+ex:art a skos:Concept ;
+    skos:prefLabel "Art"@en ;
+    skos:prefLabel "Kunst"@de ;
+    skos:altLabel "Fine arts"@en ;
+    skos:definition "The expression or application of human creative skill and imagination"@en ;
+    skos:notation "700" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:narrower ex:architecture, ex:painting, ex:sculpture .
+
+# Concept 3: Gothic Architecture
+ex:gothic a skos:Concept ;
+    skos:prefLabel "Gothic architecture"@en ;
+    skos:prefLabel "Architecture gothique"@fr ;
+    skos:altLabel "Gothic style"@en ;
+    skos:definition "A style of architecture that flourished during the high and late medieval period"@en ;
+    skos:notation "723.5" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:broader ex:architecture ;
+    skos:related ex:medieval .
+
+# Concept 4: Modernism
+ex:modernism a skos:Concept ;
+    skos:prefLabel "Modernism"@en ;
+    skos:prefLabel "Modernisme"@fr ;
+    skos:altLabel "Modern architecture"@en ;
+    skos:altLabel "International style"@en ;
+    skos:definition "A movement in architecture emphasizing form and function"@en ;
+    skos:notation "724.6" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:broader ex:architecture .
+
+# Concept 5: Painting
+ex:painting a skos:Concept ;
+    skos:prefLabel "Painting"@en ;
+    skos:prefLabel "Malerei"@de ;
+    skos:altLabel "Fine art painting"@en ;
+    skos:definition "The practice of applying paint, pigment, color or other medium to a surface"@en ;
+    skos:notation "750" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:broader ex:art .
+
+# Concept 6: Sculpture
+ex:sculpture a skos:Concept ;
+    skos:prefLabel "Sculpture"@en ;
+    skos:prefLabel "Bildhauerei"@de ;
+    skos:altLabel "Sculpting"@en ;
+    skos:definition "Three-dimensional artwork created by shaping or combining hard materials"@en ;
+    skos:notation "730" ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:broader ex:art .
+
+# Concept 7: Medieval
+ex:medieval a skos:Concept ;
+    skos:prefLabel "Medieval period"@en ;
+    skos:prefLabel "Période médiévale"@fr ;
+    skos:altLabel "Middle Ages"@en ;
+    skos:altLabel "Medieval era"@en ;
+    skos:definition "The period of European history from the 5th to the 15th century"@en ;
+    skos:inScheme ex:TestVocabulary ;
+    skos:related ex:gothic .
