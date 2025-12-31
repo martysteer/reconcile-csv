@@ -61,20 +61,20 @@
   "Handle reconciliation requests (GET/POST)"
   [request]
   (let [params (:params request)
-        callback (:callback params)]
+        callback (get params "callback")]
     (try
       (cond
         ;; No query parameters - return service manifest
-        (and (nil? (:query params)) (nil? (:queries params)))
+        (and (nil? (get params "query")) (nil? (get params "queries")))
         (json-response callback (manifest/service-manifest @config))
 
         ;; Single query
-        (:query params)
-        (json-response callback (reconcile/reconcile-query (:query params)))
+        (get params "query")
+        (json-response callback (reconcile/reconcile-query (get params "query")))
 
         ;; Batch queries
-        (:queries params)
-        (json-response callback (reconcile/reconcile-batch (:queries params)))
+        (get params "queries")
+        (json-response callback (reconcile/reconcile-batch (get params "queries")))
 
         :else
         (error-response 400 "Invalid request: missing query or queries parameter"))
@@ -87,8 +87,8 @@
   "Handle entity suggest requests"
   [request]
   (let [params (:params request)
-        prefix (:prefix params "")
-        callback (:callback params)]
+        prefix (get params "prefix" "")
+        callback (get params "callback")]
     (try
       (json-response callback (suggest/suggest-entities prefix @skos/concepts))
       (catch Exception e
@@ -98,8 +98,8 @@
   "Handle type suggest requests"
   [request]
   (let [params (:params request)
-        prefix (:prefix params "")
-        callback (:callback params)]
+        prefix (get params "prefix" "")
+        callback (get params "callback")]
     (try
       (json-response callback (suggest/suggest-types prefix @skos/concept-schemes))
       (catch Exception e
@@ -109,8 +109,8 @@
   "Handle flyout preview requests"
   [request]
   (let [params (:params request)
-        id (:id params)
-        callback (:callback params)]
+        id (get params "id")
+        callback (get params "callback")]
     (try
       (json-response callback (suggest/flyout-html id @skos/concepts))
       (catch Exception e
@@ -120,7 +120,7 @@
   "Handle preview requests"
   [request]
   (let [params (:params request)
-        id (:id params)]
+        id (get params "id")]
     (try
       ;; TODO: Implement proper HTML preview
       (html-response
@@ -151,8 +151,8 @@
   "Handle property proposal requests"
   [request]
   (let [params (:params request)
-        type-id (:type params)
-        callback (:callback params)]
+        type-id (get params "type")
+        callback (get params "callback")]
     (try
       (json-response callback (extend/propose-properties type-id))
       (catch Exception e
@@ -164,7 +164,7 @@
   (try
     ;; TODO: Parse JSON body properly
     (let [params (:params request)
-          callback (:callback params)]
+          callback (get params "callback")]
       (json-response callback (extend/extend-data [] [] @skos/concepts)))
     (catch Exception e
       (error-response 500 (str "Extend error: " (.getMessage e))))))
@@ -204,11 +204,11 @@
 (defn summarize-request
   "Generate a summary of the request for logging"
   [uri params]
-  (let [query (:query params)
-        queries (:queries params)
-        prefix (:prefix params)
-        id (:id params)
-        callback (:callback params)]
+  (let [query (get params "query")
+        queries (get params "queries")
+        prefix (get params "prefix")
+        id (get params "id")
+        callback (get params "callback")]
     (cond
       ;; Reconciliation queries
       queries
