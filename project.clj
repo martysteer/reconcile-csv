@@ -1,19 +1,34 @@
-(defproject reconcile-csv "0.1.3-SNAPSHOT"
-  :description "A Reconciliation service, connecting CSV's with OpenRefine"
-  :url "http://okfnlabs.org/reconcile-csv"
+(defproject reconcile-skos "0.2.0-SNAPSHOT"
+  :description "A SKOS Reconciliation Service for OpenRefine"
+  :url "https://github.com/martysteer/reconcile-csv"
   :license {:name "BSD 2-Clause"
-            :file "LICENSE" }
-  :dependencies [[org.clojure/clojure "1.5.1"]
-    [org.clojure/tools.nrepl "0.2.3"]
-    [ring/ring-core "1.2.0"]
-    [ring/ring-jetty-adapter "1.2.0"]
-    [compojure "1.1.6"]
-    [org.clojure/data.json "0.2.3"]
+            :file "LICENSE"}
+
+  :dependencies [
+    ;; Core
+    [org.clojure/clojure "1.11.1"]
+
+    ;; Web server
+    [ring/ring-core "1.10.0"]
+    [ring/ring-jetty-adapter "1.10.0"]
+    [ring/ring-json "0.5.1"]
+    [ring-cors "0.1.13"]
+    [compojure "1.7.0"]
+
+    ;; JSON
+    [org.clojure/data.json "2.4.0"]
+
+    ;; RDF/SKOS parsing (Grafter)
+    [io.github.swirrl/grafter.io "3.0.0"]
+
+    ;; Fuzzy matching
     [fuzzy-string "0.1.3"]
-    [csv-map "0.1.0"]
   ]
-  :plugins [[lein-ring "0.8.7"]]
-  :main reconcile-csv.core
-  :aot [reconcile-csv.core]
-  )
+
+  :plugins [[lein-ring "0.12.6"]]
+  :main reconcile-skos.core
+  :aot [reconcile-skos.core]
+
+  ;; Java 17+ required
+  :jvm-opts ["-Xmx2g"])
   
