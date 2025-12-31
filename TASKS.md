@@ -11,12 +11,6 @@
 
 ## Phase 0: Environment Setup & Prerequisites
 
-### 0.1 Java Environment
-- [ ] **0.1.1** Verify Java 17+ is installed (`java -version`)
-- [ ] **0.1.2** If needed, install Java 17+ (e.g., `brew install openjdk@17` on macOS)
-- [ ] **0.1.3** Set JAVA_HOME to Java 17+ installation
-- [ ] **0.1.4** Verify: `java -version` shows 17 or higher
-
 ### 0.2 Leiningen Update
 - [ ] **0.2.1** Check Leiningen version (`lein --version`)
 - [ ] **0.2.2** Update Leiningen to 2.9+ if needed (`lein upgrade`)
