@@ -185,11 +185,63 @@
   (route/not-found
     (error-response 404 "Not found")))
 
+;; Request Logging Middleware
+
+(defn format-timestamp
+  "Format current timestamp for logging"
+  []
+  (let [now (java.time.LocalDateTime/now)
+        formatter (java.time.format.DateTimeFormatter/ofPattern "yyyy-MM-dd HH:mm:ss")]
+    (.format now formatter)))
+
+(defn format-params
+  "Format query parameters for logging"
+  [params]
+  (if (empty? params)
+    ""
+    (str " " (pr-str params))))
+
+(defn wrap-request-logger
+  "Middleware to log incoming requests and responses"
+  [handler]
+  (fn [request]
+    (let [start-time (System/currentTimeMillis)
+          method (-> request :request-method name .toUpperCase)
+          uri (:uri request)
+          params (:params request)
+          query-str (or (:query params) (:queries params))
+
+          ;; Log incoming request
+          _ (println (str "\n[" (format-timestamp) "] "
+                         "→ " method " " uri))
+
+          ;; Log query parameter if it's a reconciliation request
+          _ (when query-str
+              (println (str "   Query: " (pr-str query-str))))
+
+          ;; Log other interesting params
+          _ (when (and (not query-str) (not (empty? params)))
+              (println (str "   Params:" (format-params params))))
+
+          ;; Execute the request
+          response (handler request)
+
+          ;; Calculate processing time
+          end-time (System/currentTimeMillis)
+          duration (- end-time start-time)
+
+          ;; Log response
+          status (:status response)
+          _ (println (str "   ← " status " (" duration "ms)"))]
+
+      response)))
+
 ;; Middleware Stack
 
 (def app
   (-> app-routes
       wrap-params
+      wrap-request-logger  ; Add request logging
       (wrap-cors :access-control-allow-origin [#".*"]
                  :access-control-allow-methods [:get :post :put :delete :options]
                  :access-control-allow-headers ["Content-Type" "Authorization"])))
@@ -228,7 +280,11 @@
     (println "Add this URL to OpenRefine:")
     (println "  http://localhost:" (:port @config) "/reconcile")
     (println)
+    (println "Request logging: ENABLED")
+    (println "  (You'll see all HTTP requests and responses below)")
+    (println)
     (println "Press Ctrl+C to stop the server")
+    (println "========================================")
     (println)
 
     ;; Start Jetty server
