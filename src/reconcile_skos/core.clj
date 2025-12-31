@@ -201,6 +201,70 @@
     ""
     (str " " (pr-str params))))
 
+(defn summarize-request
+  "Generate a summary of the request for logging"
+  [uri params]
+  (let [query (:query params)
+        queries (:queries params)
+        prefix (:prefix params)
+        id (:id params)
+        callback (:callback params)]
+    (cond
+      ;; Reconciliation queries
+      queries
+      (str "Batch reconciliation: " (count (read-string queries)) " queries")
+
+      query
+      (let [q-str (if (string? query) query (str query))
+            truncated (if (> (count q-str) 50)
+                        (str (subs q-str 0 47) "...")
+                        q-str)]
+        (str "Reconcile query: \"" truncated "\""))
+
+      ;; Suggest requests
+      prefix
+      (str "Suggest: prefix=\"" prefix "\"")
+
+      ;; View/preview/flyout
+      id
+      (str "ID lookup: " id)
+
+      ;; No params - probably manifest
+      (and (= uri "/reconcile") (empty? params))
+      "Service manifest request"
+
+      ;; Other params
+      (not (empty? params))
+      (str "Params: " (pr-str params))
+
+      ;; Default
+      :else
+      nil)))
+
+(defn extract-result-count
+  "Extract result count from response body if it's JSON"
+  [response]
+  (try
+    (when (and (= 200 (:status response))
+               (string? (:body response)))
+      (let [body (:body response)]
+        (cond
+          ;; Single query result
+          (and (.contains body "\"result\":[")
+               (not (.contains body "\"q0\"")))
+          (let [parsed (json/read-str body :key-fn keyword)]
+            (count (:result parsed)))
+
+          ;; Batch query results
+          (.contains body "\"q0\"")
+          (let [parsed (json/read-str body :key-fn keyword)
+                total (reduce + (map #(count (:result (val %))) parsed))]
+            (str total " total results across " (count parsed) " queries"))
+
+          :else
+          nil)))
+    (catch Exception e nil)))
+
 (defn wrap-request-logger
   "Middleware to log incoming requests and responses"
   [handler]
@@ -209,19 +273,15 @@
           method (-> request :request-method name .toUpperCase)
           uri (:uri request)
           params (:params request)
-          query-str (or (:query params) (:queries params))
+          summary (summarize-request uri params)
 
           ;; Log incoming request
           _ (println (str "\n[" (format-timestamp) "] "
                          "→ " method " " uri))
 
-          ;; Log query parameter if it's a reconciliation request
-          _ (when query-str
-              (println (str "   Query: " (pr-str query-str))))
-
-          ;; Log other interesting params
-          _ (when (and (not query-str) (not (empty? params)))
-              (println (str "   Params:" (format-params params))))
+          ;; Log request summary
+          _ (when summary
+              (println (str "   " summary)))
 
           ;; Execute the request
           response (handler request)
@@ -230,9 +290,13 @@
           end-time (System/currentTimeMillis)
           duration (- end-time start-time)
 
+          ;; Extract result info
+          result-info (extract-result-count response)
+
           ;; Log response
           status (:status response)
-          _ (println (str "   ← " status " (" duration "ms)"))]
+          _ (println (str "   ← " status " (" duration "ms)"
+                         (when result-info (str " - " result-info " results"))))]
 
       response)))
 
