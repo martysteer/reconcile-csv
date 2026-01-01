@@ -453,10 +453,651 @@ Fetches property values for given concept IDs.
        (group-by :s)))
 ```
 
-## Future Enhancements (Out of Scope)
+## Detailed Feature Specifications
 
-- Multiple vocabulary support
+### Priority 1: Core Functionality
+
+#### 1.1 Type Filtering by ConceptScheme
+
+**Status:** Planned
+**Impact:** Critical when loading multiple vocabularies
+**Location:** `src/reconcile_skos/reconcile.clj:92-98`
+
+**Purpose:**
+Enable users to filter reconciliation queries to specific SKOS ConceptSchemes. Essential when loading multiple FAST vocabularies (Geographic, Topical, Personal, etc.) to search only within a specific domain.
+
+**Current State:**
+```clojure
+(defn filter-by-type
+  "Filter concepts by type if specified in query"
+  [concepts query]
+  (if-let [type-filter (:type query)]
+    ;; TODO: Implement type filtering based on ConceptScheme
+    concepts
+    concepts))
+```
+
+**Implementation Specification:**
+
+1. **Query Input:**
+   ```json
+   {
+     "query": "London",
+     "type": "http://id.worldcat.org/fast/ontology/Geographic"
+   }
+   ```
+
+2. **Filtering Logic:**
+   - Extract `type` parameter from reconciliation query
+   - If type is `"skos:Concept"` → return all concepts (no filtering)
+   - If type matches a ConceptScheme URI → filter concepts where `skos:inScheme` includes that URI
+   - Support both full URIs and ConceptScheme IDs
+
+3. **ConceptScheme Matching:**
+   - Match by full URI: `"http://id.worldcat.org/fast/"`
+   - Match by ConceptScheme ID from manifest `defaultTypes`
+   - Handle concepts with multiple `skos:inScheme` values
+
+4. **Edge Cases:**
+   - Concepts without `skos:inScheme` → exclude from type-filtered results
+   - Unknown type specified → return empty results with appropriate logging
+   - Multiple schemes in one file → correctly associate concepts with schemes
+
+**Example Use Case:**
+```bash
+# User loads multiple FAST vocabularies
+lein run FASTGeographic.skosxml FASTTopical.skosxml FASTPersonal.skosxml
+
+# OpenRefine reconciliation query with type filter
+{
+  "query": "Shakespeare",
+  "type": "Personal Names",
+  "limit": 5
+}
+# Returns only personal name concepts, excluding geographic/topical matches
+```
+
+**Testing:**
+- Load 2+ vocabularies with different ConceptSchemes
+- Query with type filter should return subset
+- Query without type filter should return all matches
+- Verify manifest `defaultTypes` includes all ConceptSchemes
+
+---
+
+#### 1.2 Entity Suggest (Auto-complete)
+
+**Status:** Stubbed
+**Impact:** High - improves OpenRefine UX
+**Location:** `src/reconcile_skos/suggest.clj:6-12`
+
+**Purpose:**
+Provide auto-complete suggestions as users type in OpenRefine reconciliation dialogs. Returns ranked suggestions based on prefix matching against SKOS labels.
+
+**Current State:**
+```clojure
+(defn suggest-entities
+  [prefix concepts & {:keys [limit] :or {limit 10}}]
+  ;; TODO: Prefix search on prefLabels and altLabels
+  {:code "/api/status/ok"
+   :status "200 OK"
+   :prefix prefix
+   :result []})
+```
+
+**Implementation Specification:**
+
+1. **Endpoint:** `GET /suggest?prefix=<string>&limit=<int>&callback=<string>`
+
+2. **Request Parameters:**
+   - `prefix` (required) - Search string (e.g., "Lond")
+   - `limit` (optional, default: 10) - Max results to return
+   - `cursor` (optional) - Pagination offset (future enhancement)
+   - `callback` (optional) - JSONP callback
+
+3. **Response Format:**
+   ```json
+   {
+     "code": "/api/status/ok",
+     "status": "200 OK",
+     "prefix": "Lond",
+     "result": [
+       {
+         "id": "1204271",
+         "name": "London (England)",
+         "n:type": {"id": "skos:Concept", "name": "SKOS Concept"},
+         "description": "Capital city of the United Kingdom"
+       },
+       {
+         "id": "1204272",
+         "name": "London (Ontario)",
+         "n:type": {"id": "skos:Concept", "name": "SKOS Concept"},
+         "description": "City in southwestern Ontario"
+       }
+     ]
+   }
+   ```
+
+4. **Matching Algorithm:**
+   - **Phase 1: Exact Prefix Match**
+     - Search normalized `prefLabel` values starting with prefix
+     - Search normalized `altLabel` values starting with prefix
+     - Rank: prefLabel exact prefix > altLabel exact prefix
+
+   - **Phase 2: Contains Match (if < limit results)**
+     - Search normalized labels containing prefix (not at start)
+     - Add to results until limit reached
+
+   - **Phase 3: Ranking**
+     - Exact prefix match on prefLabel (score: 1.0)
+     - Exact prefix match on altLabel (score: 0.9)
+     - Contains match in prefLabel (score: 0.5)
+     - Contains match in altLabel (score: 0.4)
+     - Sort by score descending, then alphabetically
+
+5. **Normalization:**
+   - Lowercase both prefix and labels
+   - Trim whitespace
+   - Consider diacritic folding (future enhancement)
+
+6. **Performance Optimization:**
+   - Use existing `label-index` for fast lookup
+   - Create prefix trie index for efficient prefix matching (Priority 2)
+   - Cache recent queries (Priority 2)
+
+**Example Interaction:**
+```bash
+# User types "rest" in OpenRefine
+GET /suggest?prefix=rest&limit=10
+
+# Returns suggestions:
+# - "Restoration, 1814-1868 (Spain)"
+# - "Restaurants"
+# - "Prehistoric period"  (contains "rest")
+```
+
+**Testing:**
+- Prefix matches return results
+- Results limited to specified limit
+- Empty prefix returns top N most common concepts
+- Handles special characters in prefix
+- Returns results in < 100ms for 10k+ concept vocabularies
+
+---
+
+#### 1.3 HTML Preview and Flyout
+
+**Status:** Placeholder
+**Impact:** Medium-High - better user experience
+**Location:** `src/reconcile_skos/core.clj:125`, `src/reconcile_skos/suggest.clj:25`
+
+**Purpose:**
+Display rich HTML previews of SKOS concepts in OpenRefine when hovering over or viewing reconciliation matches. Shows concept details, hierarchical relationships, and related terms.
+
+**Current State:**
+```clojure
+;; Preview endpoint
+(defn preview-handler [request]
+  ;; TODO: Implement proper HTML preview
+  (html-response "<div>Preview functionality coming soon...</div>"))
+
+;; Flyout endpoint
+(defn flyout-html [concept-id concepts]
+  ;; TODO: Create compact HTML preview
+  {:id concept-id :html "<p>Flyout for concept</p>"})
+```
+
+**Implementation Specification:**
+
+1. **Endpoints:**
+   - `GET /preview?id=<concept-id>` - Embeddable HTML preview
+   - `GET /flyout?id=<concept-id>` - Flyout JSON with HTML
+
+2. **Preview Response (GET /preview?id=123):**
+   ```html
+   <div style="padding: 10px; font-family: sans-serif; max-width: 380px;">
+     <h3 style="margin: 0 0 10px 0; font-size: 16px;">London (England)</h3>
+
+     <div style="margin-bottom: 10px;">
+       <strong>Type:</strong> Geographic Concept<br>
+       <strong>Notation:</strong> fst01204271
+     </div>
+
+     <div style="margin-bottom: 10px;">
+       <strong>Definition:</strong> Capital city of the United Kingdom
+     </div>
+
+     <div style="margin-bottom: 10px;">
+       <strong>Alternative Labels:</strong><br>
+       • Greater London (England)<br>
+       • Londinium
+     </div>
+
+     <div style="border-top: 1px solid #ccc; padding-top: 10px; margin-top: 10px;">
+       <strong>Broader:</strong><br>
+       • England
+
+       <strong style="display: block; margin-top: 8px;">Narrower:</strong><br>
+       • Westminster (London, England)<br>
+       • City of London (England)
+     </div>
+   </div>
+   ```
+
+3. **Flyout Response (GET /flyout?id=123):**
+   ```json
+   {
+     "id": "1204271",
+     "html": "<div>...same HTML as preview...</div>"
+   }
+   ```
+
+4. **HTML Structure:**
+   - **Header:** Display `prefLabel` (largest available language, prefer English)
+   - **Metadata Section:**
+     - Type: ConceptScheme name (e.g., "FAST Geographic")
+     - Notation: `skos:notation` value if available
+     - URI: Concept URI (optional, collapsible)
+
+   - **Description Section:**
+     - Definition: `skos:definition` if available
+     - Scope Note: `skos:scopeNote` if available
+
+   - **Labels Section:**
+     - Alternative Labels: All `skos:altLabel` values (bulleted list)
+     - Hidden Labels: All `skos:hiddenLabel` values (if present, smaller text)
+
+   - **Relationships Section:**
+     - Broader: List `skos:broader` concepts (with labels, max 5)
+     - Narrower: List `skos:narrower` concepts (with labels, max 5)
+     - Related: List `skos:related` concepts (with labels, max 3)
+     - Show "... and N more" if truncated
+
+5. **Styling Guidelines:**
+   - Width: Max 380px (fits OpenRefine preview panel)
+   - Height: Max 300px (as specified in manifest)
+   - Font: Sans-serif, 14px base
+   - Colors: Neutral grays, minimal styling
+   - Responsive: Works in small panels
+
+6. **Error Handling:**
+   - Concept not found → Return minimal HTML with error message
+   - Missing fields → Gracefully skip sections
+   - Broken relationships → Show URI instead of label
+
+**Example Use Cases:**
+- User hovers over "London" in reconciliation results → sees preview with broader term "England"
+- User clicks "View" link → opens `/view/:id` with full concept page
+- Helps disambiguate between "London (England)" vs "London (Ontario)"
+
+**Testing:**
+- Preview displays for concept with all fields populated
+- Preview displays for minimal concept (only prefLabel)
+- Handles missing broader/narrower gracefully
+- HTML renders correctly in OpenRefine preview panel
+- Flyout JSON properly encodes HTML
+
+---
+
+### Priority 2: Performance & Scalability
+
+#### 2.1 Streaming/Chunked Loading for Large Files
+
+**Status:** Planned
+**Impact:** Critical for large FAST vocabularies
+**Current Issue:** Memory overflow when loading 500MB+ files
+
+**Problem Statement:**
+Current implementation loads entire RDF file into memory before processing:
+```clojure
+(defn load-vocabulary-file [file-path]
+  (let [triples (load-rdf file-path)  ; Loads ALL triples into memory
+        extracted (extract-concepts triples)]))
+```
+
+**File Size Reality:**
+```
+FASTChronological.skosxml:  423 KB   ✓ Works fine
+FASTFormGenre.skosxml:      4.0 MB   ✓ Works fine
+FASTGeographic.skosxml:     220 MB   ⚠ Slow, high memory
+FASTCorporate.skosxml:      424 MB   ⚠ Very slow
+FASTTopical.skosxml:        471 MB   ⚠ Very slow
+FASTPersonal.skosxml:       849 MB   ✗ May fail with default 2GB heap
+```
+
+**Implementation Specification:**
+
+1. **Streaming RDF Parser:**
+   ```clojure
+   (defn load-rdf-streaming
+     "Load RDF statements in chunks, processing incrementally"
+     [file-path chunk-size]
+     (with-open [stream (io/input-stream file-path)]
+       (let [parser (gio/rdf-parser stream :format :rdf)]
+         ;; Process triples in chunks
+         (partition-all chunk-size (gio/statements parser)))))
+   ```
+
+2. **Incremental Concept Building:**
+   ```clojure
+   (defn load-vocabulary-streaming
+     "Load vocabulary file in chunks to avoid memory overflow"
+     [file-path]
+     (println "  Loading (streaming):" file-path)
+     (let [chunk-size 10000
+           concepts-atom (atom {})
+           schemes-atom (atom {})
+           triple-count (atom 0)]
+
+       ;; Process each chunk
+       (doseq [chunk (load-rdf-streaming file-path chunk-size)]
+         (swap! triple-count + (count chunk))
+         (when (zero? (mod @triple-count 50000))
+           (println "    Processed" @triple-count "triples..."))
+
+         ;; Extract concepts from chunk and merge
+         (let [chunk-data (extract-concepts chunk)]
+           (swap! concepts-atom merge (:concepts chunk-data))
+           (swap! schemes-atom merge (:schemes chunk-data))))
+
+       (println "    Loaded" @triple-count "RDF triples")
+       (println "    Found" (count @concepts-atom) "SKOS concepts")
+       {:concepts @concepts-atom :schemes @schemes-atom}))
+   ```
+
+3. **Progress Reporting:**
+   - Print progress every 50k triples
+   - Show estimated time remaining (if possible)
+   - Display current memory usage
+   - Example output:
+   ```
+   Loading (streaming): FASTPersonal.skosxml
+     Processed 50000 triples... (memory: 512MB)
+     Processed 100000 triples... (memory: 734MB)
+     Processed 150000 triples... (memory: 891MB)
+     ...
+     Loaded 1250000 RDF triples
+     Found 125483 SKOS concepts
+   ```
+
+4. **Memory Management:**
+   - Use transducers for efficient processing
+   - Clear intermediate data structures after each chunk
+   - Suggest GC after each file when loading multiple vocabularies
+   - Monitor heap usage, warn if > 80% used
+
+5. **Fallback Behavior:**
+   - Auto-detect file size before loading
+   - If < 10MB: Use current fast loading
+   - If >= 10MB: Use streaming loading
+   - Allow CLI override: `--streaming true/false`
+
+6. **JVM Heap Recommendations:**
+   ```bash
+   # For loading all FAST vocabularies (total ~2.5GB)
+   lein run -J-Xmx4g FAST*.skosxml
+
+   # Update project.clj default
+   :jvm-opts ["-Xmx4g"]  ; Increase from 2g to 4g
+   ```
+
+**Testing:**
+- Load 500MB+ file without OOM error
+- Verify all concepts extracted correctly
+- Compare concept count: streaming vs. non-streaming (should match)
+- Memory usage stays reasonable (< max heap - 500MB)
+- Progress updates print regularly
+
+**Performance Targets:**
+- FASTPersonal.skosxml (849MB): Load in < 5 minutes with 4GB heap
+- Memory usage: < 3GB peak when loading largest file
+- Progress updates every 10-20 seconds
+
+---
+
+#### 2.2 Prefix Trie Index for Fast Suggest
+
+**Status:** Planned
+**Impact:** High - improves suggest performance
+**Prerequisite:** Priority 1.2 (Entity Suggest) must be implemented first
+
+**Purpose:**
+Create a prefix trie (also called "prefix tree") data structure to enable sub-millisecond prefix matching for entity suggest auto-complete. Essential for responsive UX when searching large vocabularies.
+
+**Current Approach (Naive):**
+```clojure
+;; Linear scan through all labels - O(n) where n = number of labels
+(defn suggest-entities-naive [prefix concepts]
+  (filter
+    (fn [concept]
+      (let [label (get-best-label concept)]
+        (.startsWith (str/lower-case label) (str/lower-case prefix))))
+    (vals concepts)))
+```
+
+**Problem:**
+- **Performance:** O(n) lookup time
+- With 100k concepts (FAST Personal Names): 50-200ms per query
+- Unacceptable for real-time auto-complete
+
+**Solution: Prefix Trie Index**
+
+**Data Structure:**
+```clojure
+;; Trie node structure
+{:char \l
+ :concepts #{"uri1" "uri2"}  ; Concepts with labels starting with this prefix
+ :children {\o {:char \o
+                :concepts #{"uri1"}
+                :children {\n {:char \n ...}}}}}
+
+;; Example for "london":
+;; Root -> l -> o -> n -> d -> o -> n
+;;         ↓    ↓    ↓    ↓    ↓    ↓
+;;        []   []   []   []   []  [concept-uris]
+```
+
+**Implementation Specification:**
+
+1. **Trie Construction:**
+   ```clojure
+   (defn build-prefix-trie
+     "Build prefix trie from label index for fast prefix matching"
+     [label-index]
+     (let [trie (atom {})]
+       (doseq [[normalized-label concept-uris] label-index]
+         (insert-into-trie! trie normalized-label concept-uris))
+       @trie))
+
+   (defn insert-into-trie!
+     "Insert a label and its concept URIs into trie"
+     [trie label concept-uris]
+     (loop [node trie
+            chars (seq label)
+            depth 0]
+       (if (empty? chars)
+         ;; End of string - store concept URIs here
+         (swap! node update :concepts (fnil into #{}) concept-uris)
+         ;; Continue down the trie
+         (let [char (first chars)]
+           (swap! node update-in [:children char] #(or % {}))
+           (recur (get-in @node [:children char])
+                  (rest chars)
+                  (inc depth))))))
+   ```
+
+2. **Prefix Search:**
+   ```clojure
+   (defn prefix-search-trie
+     "Find all concepts with labels starting with prefix - O(k + m) where k=prefix length, m=matches"
+     [trie prefix]
+     (let [normalized-prefix (str/lower-case prefix)]
+       (loop [node trie
+              chars (seq normalized-prefix)]
+         (cond
+           ;; No match for this prefix
+           (nil? node)
+           #{}
+
+           ;; Found prefix node - collect all concepts in subtree
+           (empty? chars)
+           (collect-all-concepts node)
+
+           ;; Continue traversing
+           :else
+           (recur (get-in node [:children (first chars)])
+                  (rest chars))))))
+
+   (defn collect-all-concepts
+     "Collect all concept URIs from a trie node and its descendants"
+     [node]
+     (let [direct (:concepts node)
+           from-children (mapcat collect-all-concepts
+                                 (vals (:children node)))]
+       (into (or direct #{}) from-children)))
+   ```
+
+3. **Integration with load-vocabularies:**
+   ```clojure
+   (defn load-vocabularies
+     [file-paths]
+     ;; ... existing loading logic ...
+     (let [idx (build-label-index merged-concepts)
+           trie (build-prefix-trie idx)]  ; NEW: Build trie
+       (reset! label-index idx)
+       (reset! prefix-trie trie)  ; NEW: Store trie in atom
+       {:concepts (count merged-concepts)
+        :schemes (count merged-schemes)
+        :labels (count idx)}))
+   ```
+
+4. **Memory Considerations:**
+   - Trie memory overhead: ~2-3x the label index size
+   - For 100k unique labels: ~5-10MB additional memory
+   - Trade-off: Memory for speed (acceptable)
+
+5. **Optimizations:**
+   - Limit trie depth to 20 characters (handles 99.9% of labels)
+   - Store only concept URIs in leaf nodes, not full concepts
+   - Consider compressed trie (PATRICIA trie) for very large vocabularies
+
+**Performance Targets:**
+- Prefix search: < 5ms for any prefix (even in 100k concept vocabulary)
+- Trie construction: < 1 second for 100k labels
+- Memory overhead: < 50MB for largest FAST vocabulary
+
+**Testing:**
+- Build trie for test vocabulary
+- Verify prefix "lon" returns all concepts starting with "london", "long", etc.
+- Compare results: trie-based vs. linear scan (should be identical)
+- Benchmark: measure query time improvement (should be 10-100x faster)
+- Test edge cases: empty prefix, non-existent prefix, special characters
+
+---
+
+#### 2.3 Query Result Caching
+
+**Status:** Planned
+**Impact:** Medium - improves perceived performance
+**Dependencies:** None
+
+**Purpose:**
+Cache reconciliation and suggest query results to improve response times for repeated queries. Particularly useful during OpenRefine reconciliation sessions where users often query the same terms multiple times.
+
+**Implementation Specification:**
+
+1. **Cache Strategy:**
+   - **Type:** LRU (Least Recently Used) cache
+   - **Size:** 1000 entries (configurable)
+   - **TTL:** Until vocabulary reload
+   - **Key:** Query string + type filter + limit
+   - **Value:** Full response map
+
+2. **Cache Implementation:**
+   ```clojure
+   (ns reconcile-skos.cache
+     (:require [clojure.core.cache :as cache]))
+
+   ;; Cache atom
+   (def query-cache
+     (atom (cache/lru-cache-factory {} :threshold 1000)))
+
+   (defn cache-key
+     "Generate cache key from query parameters"
+     [query-str type-filter limit]
+     (str query-str "|" type-filter "|" limit))
+
+   (defn get-cached
+     "Get cached result if available"
+     [query-str type-filter limit]
+     (let [k (cache-key query-str type-filter limit)]
+       (when (cache/has? @query-cache k)
+         (let [cached-value (cache/hit @query-cache k)]
+           (reset! query-cache cached-value)
+           (cache/lookup cached-value k)))))
+
+   (defn put-cached!
+     "Store result in cache"
+     [query-str type-filter limit result]
+     (let [k (cache-key query-str type-filter limit)]
+       (swap! query-cache cache/miss k result)))
+
+   (defn clear-cache!
+     "Clear all cached results (call when vocabulary reloads)"
+     []
+     (reset! query-cache (cache/lru-cache-factory {} :threshold 1000)))
+   ```
+
+3. **Integration with reconcile-query:**
+   ```clojure
+   (defn reconcile-query
+     "Process a single reconciliation query with caching"
+     [query-input]
+     (let [parsed (parse-query query-input)
+           query-str (extract-query-string parsed)
+           type-filter (:type parsed)
+           limit (or (:limit parsed) 5)]
+
+       ;; Check cache first
+       (if-let [cached (get-cached query-str type-filter limit)]
+         cached
+         ;; Cache miss - compute and store
+         (let [result (compute-reconciliation-result parsed)]
+           (put-cached! query-str type-filter limit result)
+           result))))
+   ```
+
+4. **Cache Statistics:**
+   - Track hit rate
+   - Log cache performance periodically
+   - Expose stats via admin endpoint (future)
+
+5. **Cache Invalidation:**
+   - Clear cache when vocabularies are reloaded
+   - No TTL needed (vocabulary is static)
+   - Manual clear via REPL if needed
+
+**Performance Targets:**
+- Cache hit response time: < 1ms
+- Cache hit rate: > 30% during typical reconciliation sessions
+- Memory overhead: < 20MB for 1000 cached queries
+
+**Testing:**
+- First query: compute result (slow)
+- Repeat query: return cached result (fast)
+- Different queries: compute independently
+- Cache eviction: LRU behavior verified
+- Cache cleared on vocabulary reload
+
+---
+
+## Future Enhancements (Out of Scope for Current Phase)
+
 - SPARQL endpoint integration
-- Persistent storage/caching
+- Persistent storage/caching across restarts
 - Authentication/API keys
-- Concept scheme hierarchies
+- Advanced property filtering
+- Language preference boosting
+- Scoring enhancements
+- Data extension implementation
+- Configuration file support

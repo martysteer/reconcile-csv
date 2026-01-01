@@ -472,6 +472,410 @@
 
 ---
 
+## Phase 11: Priority 1 - Core Functionality Enhancements
+
+### 11.1 Type Filtering by ConceptScheme
+
+**Status:** Planned
+**Location:** `src/reconcile_skos/reconcile.clj:92-98`
+**Specification:** See SPECIFICATION.md §1.1
+
+- [ ] **11.1.1** Read ConceptScheme details from manifest
+  ```clojure
+  (defn get-scheme-by-id [scheme-id]
+    ;; Lookup ConceptScheme by ID or URI
+    ...)
+  ```
+- [ ] **11.1.2** Implement ConceptScheme matching logic
+  - Match by full URI
+  - Match by ConceptScheme ID from manifest
+  - Handle "skos:Concept" as special case (no filtering)
+- [ ] **11.1.3** Implement type filtering in `filter-by-type`
+  ```clojure
+  (defn filter-by-type [concepts query]
+    (if-let [type-filter (:type query)]
+      (if (= type-filter "skos:Concept")
+        concepts  ; No filtering
+        (filter #(concept-in-scheme? % type-filter) concepts))
+      concepts))
+  ```
+- [ ] **11.1.4** Implement `concept-in-scheme?` helper
+  ```clojure
+  (defn concept-in-scheme? [concept scheme-identifier]
+    ;; Check if concept's :in-scheme includes the scheme
+    ...)
+  ```
+- [ ] **11.1.5** Handle edge cases
+  - Concepts without `skos:inScheme` property
+  - Unknown type filter (log warning, return empty results)
+  - Multiple schemes per concept
+- [ ] **11.1.6** Test with multiple vocabularies
+  - Load FASTGeographic + FASTTopical
+  - Query with type="Geographic" → verify only geographic results
+  - Query with type="skos:Concept" → verify all results
+- [ ] **11.1.7** Update manifest to correctly populate `defaultTypes`
+  - Ensure all ConceptSchemes appear in types list
+  - Include both ID and name for each scheme
+
+### 11.2 Entity Suggest (Auto-complete)
+
+**Status:** Stubbed
+**Location:** `src/reconcile_skos/suggest.clj:6-12`
+**Specification:** See SPECIFICATION.md §1.2
+
+- [ ] **11.2.1** Implement prefix matching on labels
+  ```clojure
+  (defn find-prefix-matches [prefix label-index]
+    ;; Find all labels starting with prefix (case-insensitive)
+    ...)
+  ```
+- [ ] **11.2.2** Implement contains matching (fallback)
+  ```clojure
+  (defn find-contains-matches [prefix label-index]
+    ;; Find labels containing prefix (not at start)
+    ...)
+  ```
+- [ ] **11.2.3** Implement ranking algorithm
+  - Exact prefix match on prefLabel: score 1.0
+  - Exact prefix match on altLabel: score 0.9
+  - Contains match in prefLabel: score 0.5
+  - Contains match in altLabel: score 0.4
+  - Sort by score descending, then alphabetically
+- [ ] **11.2.4** Implement suggest-entities function
+  ```clojure
+  (defn suggest-entities [prefix concepts & {:keys [limit] :or {limit 10}}]
+    (let [normalized-prefix (normalize-label prefix)
+          prefix-matches (find-prefix-matches normalized-prefix @label-index)
+          contains-matches (if (< (count prefix-matches) limit)
+                            (find-contains-matches normalized-prefix @label-index)
+                            [])
+          all-matches (concat prefix-matches contains-matches)
+          ranked (rank-matches all-matches)
+          limited (take limit ranked)]
+      {:code "/api/status/ok"
+       :status "200 OK"
+       :prefix prefix
+       :result (map format-suggest-result limited)}))
+  ```
+- [ ] **11.2.5** Implement suggest result formatter
+  ```clojure
+  (defn format-suggest-result [concept]
+    {:id (:id concept)
+     :name (get-best-label concept)
+     :n:type {:id "skos:Concept" :name "SKOS Concept"}
+     :description (or (:definition concept) (:scope-note concept))})
+  ```
+- [ ] **11.2.6** Update suggest-handler in core.clj
+  - Extract prefix parameter
+  - Extract limit parameter (default 10)
+  - Call suggest-entities function
+  - Return JSONP-wrapped response
+- [ ] **11.2.7** Test suggest endpoint
+  - Test prefix "lond" returns London-related concepts
+  - Test empty prefix returns results
+  - Test limit parameter works
+  - Test special characters in prefix
+- [ ] **11.2.8** Performance test
+  - Verify response time < 100ms for 10k+ concept vocabulary
+  - Profile bottlenecks if slow
+
+### 11.3 HTML Preview and Flyout
+
+**Status:** Placeholder
+**Location:** `src/reconcile_skos/core.clj:125`, `src/reconcile_skos/suggest.clj:25`
+**Specification:** See SPECIFICATION.md §1.3
+
+- [ ] **11.3.1** Create HTML generation helper namespace
+  ```clojure
+  (ns reconcile-skos.html
+    "HTML preview generation for SKOS concepts")
+  ```
+- [ ] **11.3.2** Implement concept-to-html function
+  ```clojure
+  (defn concept-to-html [concept concepts]
+    ;; Generate styled HTML for concept
+    ;; Include: prefLabel, altLabels, definition, broader/narrower
+    ...)
+  ```
+- [ ] **11.3.3** Implement HTML sections
+  - Header section with prefLabel
+  - Metadata section (type, notation, URI)
+  - Description section (definition, scope note)
+  - Labels section (altLabels, hiddenLabels)
+  - Relationships section (broader, narrower, related)
+- [ ] **11.3.4** Implement relationship label resolution
+  ```clojure
+  (defn resolve-related-concept [uri concepts]
+    ;; Get concept by URI and return its label
+    ;; Fallback to URI if not found
+    ...)
+  ```
+- [ ] **11.3.5** Handle truncation for large lists
+  - Show max 5 broader/narrower concepts
+  - Show max 3 related concepts
+  - Display "... and N more" if truncated
+- [ ] **11.3.6** Update preview-handler in core.clj
+  ```clojure
+  (defn preview-handler [request]
+    (let [params (:params request)
+          id (get params "id")
+          concept (get-concept-by-id id)]
+      (if concept
+        (html-response (concept-to-html concept @concepts))
+        (html-response "<div>Concept not found</div>"))))
+  ```
+- [ ] **11.3.7** Update flyout-html in suggest.clj
+  ```clojure
+  (defn flyout-html [concept-id concepts]
+    (let [concept (get-concept-by-id concept-id concepts)]
+      (if concept
+        {:id concept-id
+         :html (concept-to-html concept concepts)}
+        {:id concept-id
+         :html "<div>Concept not found</div>"})))
+  ```
+- [ ] **11.3.8** Test HTML generation
+  - Test with fully populated concept (all fields)
+  - Test with minimal concept (only prefLabel)
+  - Test with missing broader/narrower
+  - Test truncation for long lists
+- [ ] **11.3.9** Visual testing in OpenRefine
+  - Verify HTML renders in preview panel
+  - Verify width fits (max 380px)
+  - Verify height reasonable (max 300px)
+  - Verify relationships are clickable (future enhancement)
+
+---
+
+## Phase 12: Priority 2 - Performance & Scalability
+
+### 12.1 Streaming/Chunked Loading for Large Files
+
+**Status:** Planned
+**Location:** `src/reconcile_skos/skos.clj`
+**Specification:** See SPECIFICATION.md §2.1
+
+- [ ] **12.1.1** Research Grafter streaming capabilities
+  - Check if `gio/statements` supports lazy evaluation
+  - Test with large file to understand memory behavior
+  - Review Grafter documentation for streaming patterns
+- [ ] **12.1.2** Implement file size detection
+  ```clojure
+  (defn get-file-size [file-path]
+    (.length (io/file file-path)))
+
+  (defn should-use-streaming? [file-path]
+    (> (get-file-size file-path) (* 10 1024 1024))) ; > 10MB
+  ```
+- [ ] **12.1.3** Implement streaming RDF loader
+  ```clojure
+  (defn load-rdf-streaming [file-path chunk-size]
+    ;; Load RDF in chunks to avoid memory overflow
+    ...)
+  ```
+- [ ] **12.1.4** Implement chunked concept extraction
+  ```clojure
+  (defn load-vocabulary-streaming [file-path]
+    (let [chunk-size 10000
+          concepts-acc (atom {})
+          schemes-acc (atom {})]
+      ;; Process chunks incrementally
+      ...))
+  ```
+- [ ] **12.1.5** Add progress reporting
+  - Print progress every 50k triples
+  - Display current memory usage (if possible)
+  - Show percentage complete (if file size known)
+- [ ] **12.1.6** Implement memory monitoring
+  ```clojure
+  (defn get-memory-usage []
+    (let [runtime (Runtime/getRuntime)
+          used-memory (- (.totalMemory runtime) (.freeMemory runtime))]
+      (/ used-memory 1024 1024))) ; Return MB
+
+  (defn warn-if-low-memory []
+    (let [runtime (Runtime/getRuntime)
+          max-memory (.maxMemory runtime)
+          used-memory (- (.totalMemory runtime) (.freeMemory runtime))
+          usage-pct (/ used-memory max-memory)]
+      (when (> usage-pct 0.8)
+        (println "WARNING: Memory usage high (" (int (* usage-pct 100)) "%)"))))
+  ```
+- [ ] **12.1.7** Update load-vocabulary-file to use streaming
+  ```clojure
+  (defn load-vocabulary-file [file-path]
+    (if (should-use-streaming? file-path)
+      (load-vocabulary-streaming file-path)
+      (load-vocabulary-fast file-path))) ; Existing implementation
+  ```
+- [ ] **12.1.8** Add CLI flag for streaming override
+  - `--streaming true/false` to force behavior
+  - Update parse-cli-args in core.clj
+  - Pass through to load functions
+- [ ] **12.1.9** Update project.clj JVM opts
+  - Increase from `-Xmx2g` to `-Xmx4g`
+  - Add documentation for large vocabulary loading
+- [ ] **12.1.10** Test with large files
+  - Test FASTGeographic.skosxml (220MB)
+  - Test FASTTopical.skosxml (471MB)
+  - Test FASTPersonal.skosxml (849MB)
+  - Verify no OutOfMemoryError
+  - Compare concept counts: streaming vs. fast (should match)
+- [ ] **12.1.11** Benchmark performance
+  - Measure load time for each large file
+  - Monitor peak memory usage
+  - Document recommended JVM heap sizes
+
+### 12.2 Prefix Trie Index for Fast Suggest
+
+**Status:** Planned
+**Prerequisite:** Phase 11.2 (Entity Suggest) must be complete
+**Location:** New file `src/reconcile_skos/trie.clj`
+**Specification:** See SPECIFICATION.md §2.2
+
+- [ ] **12.2.1** Create trie namespace
+  ```clojure
+  (ns reconcile-skos.trie
+    "Prefix trie data structure for fast prefix matching")
+  ```
+- [ ] **12.2.2** Define trie data structure
+  ```clojure
+  ;; Node: {:char \a :concepts #{} :children {}}
+  ;; Root: {:children {\a node, \b node, ...}}
+  ```
+- [ ] **12.2.3** Implement trie insertion
+  ```clojure
+  (defn insert-into-trie! [trie label concept-uris]
+    ;; Insert label into trie, associating concept URIs
+    ...)
+  ```
+- [ ] **12.2.4** Implement trie construction from label index
+  ```clojure
+  (defn build-prefix-trie [label-index]
+    (let [trie (atom {:children {}})]
+      (doseq [[label uris] label-index]
+        (insert-into-trie! trie label uris))
+      @trie))
+  ```
+- [ ] **12.2.5** Implement prefix search
+  ```clojure
+  (defn prefix-search-trie [trie prefix]
+    ;; Find all concept URIs with labels starting with prefix
+    ;; Return set of URIs
+    ...)
+  ```
+- [ ] **12.2.6** Implement subtree collection
+  ```clojure
+  (defn collect-all-concepts [node]
+    ;; Recursively collect all concept URIs from node and descendants
+    ...)
+  ```
+- [ ] **12.2.7** Add trie to application state
+  ```clojure
+  ;; In skos.clj
+  (def prefix-trie (atom nil))
+  ```
+- [ ] **12.2.8** Update load-vocabularies to build trie
+  ```clojure
+  (defn load-vocabularies [file-paths]
+    ;; ... existing logic ...
+    (let [idx (build-label-index merged-concepts)
+          trie (build-prefix-trie idx)]  ; NEW
+      (reset! label-index idx)
+      (reset! prefix-trie trie)  ; NEW
+      ...))
+  ```
+- [ ] **12.2.9** Update suggest-entities to use trie
+  ```clojure
+  (defn suggest-entities [prefix concepts & opts]
+    (let [matching-uris (prefix-search-trie @prefix-trie prefix)
+          matching-concepts (map #(get @concepts %) matching-uris)
+          ...]
+      ...))
+  ```
+- [ ] **12.2.10** Test trie functionality
+  - Build trie for test vocabulary
+  - Test prefix "lon" finds all london*/long* concepts
+  - Test empty prefix behavior
+  - Test non-existent prefix returns empty set
+  - Compare trie results vs. linear scan (should match)
+- [ ] **12.2.11** Benchmark trie performance
+  - Measure trie construction time
+  - Measure prefix search time vs. linear scan
+  - Verify 10-100x speedup for large vocabularies
+  - Document memory overhead
+
+### 12.3 Query Result Caching
+
+**Status:** Planned
+**Location:** New file `src/reconcile_skos/cache.clj`
+**Specification:** See SPECIFICATION.md §2.3
+
+- [ ] **12.3.1** Add cache dependency to project.clj
+  ```clojure
+  [org.clojure/core.cache "1.0.225"]
+  ```
+- [ ] **12.3.2** Create cache namespace
+  ```clojure
+  (ns reconcile-skos.cache
+    (:require [clojure.core.cache :as cache]))
+  ```
+- [ ] **12.3.3** Implement cache atom and helpers
+  ```clojure
+  (def query-cache (atom (cache/lru-cache-factory {} :threshold 1000)))
+
+  (defn cache-key [query-str type-filter limit] ...)
+  (defn get-cached [query-str type-filter limit] ...)
+  (defn put-cached! [query-str type-filter limit result] ...)
+  (defn clear-cache! [] ...)
+  ```
+- [ ] **12.3.4** Add cache statistics tracking (optional)
+  ```clojure
+  (def cache-stats (atom {:hits 0 :misses 0}))
+
+  (defn record-hit! [] (swap! cache-stats update :hits inc))
+  (defn record-miss! [] (swap! cache-stats update :misses inc))
+  (defn get-hit-rate [] ...)
+  ```
+- [ ] **12.3.5** Update reconcile-query to use cache
+  ```clojure
+  (defn reconcile-query [query-input]
+    (let [parsed (parse-query query-input)
+          query-str (extract-query-string parsed)
+          type-filter (:type parsed)
+          limit (:limit parsed)]
+      (if-let [cached (get-cached query-str type-filter limit)]
+        (do (record-hit!) cached)
+        (do (record-miss!)
+            (let [result (compute-result parsed)]
+              (put-cached! query-str type-filter limit result)
+              result)))))
+  ```
+- [ ] **12.3.6** Update load-vocabularies to clear cache
+  ```clojure
+  (defn load-vocabularies [file-paths]
+    (clear-cache!)  ; NEW: Clear cache on reload
+    ;; ... rest of loading logic ...
+    )
+  ```
+- [ ] **12.3.7** Test caching behavior
+  - First query: cache miss, computes result
+  - Repeat query: cache hit, returns cached
+  - Different query: cache miss, computes result
+  - Verify cache eviction (LRU behavior)
+- [ ] **12.3.8** Test cache invalidation
+  - Reload vocabulary → verify cache cleared
+  - Manual clear-cache! → verify cache cleared
+- [ ] **12.3.9** Benchmark cache performance
+  - Measure cache hit response time (should be < 1ms)
+  - Measure hit rate during typical reconciliation session
+  - Verify memory overhead acceptable (< 20MB for 1000 entries)
+- [ ] **12.3.10** Add cache statistics logging (optional)
+  - Log hit rate periodically
+  - Expose via admin endpoint (future)
+
+---
+
 ## Notes
 
 - Grafter 3.0 requires Java 17+ and Clojure 1.11.1+
