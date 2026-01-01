@@ -89,12 +89,24 @@
   [parsed-query]
   (or (:query parsed-query) ""))
 
+(defn normalize-type-name
+  "Normalize type name for matching (remove 'FAST ' prefix if present)"
+  [type-name]
+  (if (str/starts-with? type-name "FAST ")
+    (subs type-name 5)  ; Remove "FAST " prefix
+    type-name))
+
 (defn filter-by-type
-  "Filter concepts by type if specified in query"
+  "Filter concepts by FAST facet type if specified in query"
   [concepts query]
   (if-let [type-filter (:type query)]
-    ;; TODO: Implement type filtering based on ConceptScheme
-    concepts
+    (if (= type-filter "skos:Concept")
+      ;; Special case: return all concepts
+      concepts
+      ;; Filter by facet value
+      (let [normalized-type (normalize-type-name type-filter)]
+        (filter #(= (:facet %) normalized-type) concepts)))
+    ;; No type filter specified
     concepts))
 
 (defn filter-by-properties
