@@ -182,7 +182,8 @@
        :broader (extract-uri-refs subject-triples skos-broader)
        :narrower (extract-uri-refs subject-triples skos-narrower)
        :related (extract-uri-refs subject-triples skos-related)
-       :in-scheme (extract-uri-refs subject-triples skos-in-scheme)})))
+       :in-scheme (extract-uri-refs subject-triples skos-in-scheme)
+       :facet (extract-literal subject-triples fast-facet)})))
 
 (defn extract-concept-scheme
   "Extract a single SKOS ConceptScheme from subject triples"
