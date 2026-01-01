@@ -9,6 +9,9 @@
 (def rdf-ns "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
 (def rdfs-ns "http://www.w3.org/2000/01/rdf-schema#")
 
+;; FAST namespace constants (for facet extraction)
+(def fast-ns "http://id.worldcat.org/fast/ontology/")
+
 ;; SKOS property URIs
 (def skos-concept (str skos-ns "Concept"))
 (def skos-concept-scheme (str skos-ns "ConceptScheme"))
@@ -23,6 +26,9 @@
 (def skos-related (str skos-ns "related"))
 (def skos-in-scheme (str skos-ns "inScheme"))
 (def rdf-type (str rdf-ns "type"))
+
+;; FAST property URIs
+(def fast-facet (str fast-ns "facet"))
 
 ;; Application state
 (def concepts (atom {}))
