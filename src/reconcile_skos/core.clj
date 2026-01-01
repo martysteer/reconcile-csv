@@ -212,7 +212,10 @@
     (cond
       ;; Reconciliation queries
       queries
-      (str "Batch reconciliation: " (count (read-string queries)) " queries")
+      (try
+        (str "Batch reconciliation: " (count (json/read-str queries)) " queries")
+        (catch Exception e
+          "Batch reconciliation request"))
 
       query
       (let [q-str (if (string? query) query (str query))
