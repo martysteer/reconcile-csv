@@ -3,7 +3,8 @@
   (:require [grafter-2.rdf4j.io :as gio]
             [grafter-2.rdf.protocols :as pr]
             [clojure.string :as str]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [reconcile-skos.trie :as trie])
   (:import [java.io File]))
 
 ;; SKOS namespace constants
@@ -36,6 +37,7 @@
 (def concepts (atom {}))
 (def concept-schemes (atom {}))
 (def label-index (atom {}))
+(def prefix-trie (atom nil))
 
 ;; Streaming threshold (10MB)
 (def streaming-threshold-bytes (* 10 1024 1024))
@@ -389,10 +391,14 @@
         concepts-map (:concepts data)
         schemes-map (:schemes data)
         idx (build-label-index concepts-map)
-        _ (println "Built label index with" (count idx) "unique labels")]
+        _ (println "Built label index with" (count idx) "unique labels")
+        _ (println "Building prefix trie index...")
+        trie-idx (trie/build-trie idx)
+        _ (trie/print-trie-stats trie-idx)]
     (reset! concepts concepts-map)
     (reset! concept-schemes schemes-map)
     (reset! label-index idx)
+    (reset! prefix-trie trie-idx)
     {:concepts (count concepts-map)
      :schemes (count schemes-map)
      :labels (count idx)}))
@@ -411,11 +417,15 @@
         idx (build-label-index merged-concepts)
         _ (println "  Total concepts:" (count merged-concepts))
         _ (println "  Total concept schemes:" (count merged-schemes))
-        _ (println "  Total unique labels:" (count idx))]
+        _ (println "  Total unique labels:" (count idx))
+        _ (println "Building prefix trie index...")
+        trie-idx (trie/build-trie idx)
+        _ (trie/print-trie-stats trie-idx)]
     ;; Update atoms with merged data
     (reset! concepts merged-concepts)
     (reset! concept-schemes merged-schemes)
     (reset! label-index idx)
+    (reset! prefix-trie trie-idx)
     {:concepts (count merged-concepts)
      :schemes (count merged-schemes)
      :labels (count idx)}))

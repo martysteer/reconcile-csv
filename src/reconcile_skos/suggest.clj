@@ -1,6 +1,7 @@
 (ns reconcile-skos.suggest
   "Suggest service for entity and type auto-completion"
   (:require [reconcile-skos.skos :as skos]
+            [reconcile-skos.trie :as trie]
             [clojure.string :as str]))
 
 ;; Scoring weights for suggest results
@@ -69,17 +70,31 @@
       (apply max-key :score scored-matches))))
 
 (defn find-matches
-  "Find all concepts matching the prefix"
+  "Find all concepts matching the prefix using trie index"
   [prefix concepts-map]
-  (let [concept-matches (keep
-                          (fn [[uri concept]]
-                            (when-let [match (find-matching-labels prefix concept)]
-                              (assoc concept
-                                     :match-score (:score match)
-                                     :matched-label (:label match)
-                                     :match-type (:type match))))
-                          concepts-map)]
-    concept-matches))
+  (if-let [trie-index @skos/prefix-trie]
+    ;; Use trie for fast prefix search
+    (let [matching-uris (trie/prefix-search trie-index prefix)
+          concept-matches (keep
+                            (fn [uri]
+                              (when-let [concept (get concepts-map uri)]
+                                (when-let [match (find-matching-labels prefix concept)]
+                                  (assoc concept
+                                         :match-score (:score match)
+                                         :matched-label (:label match)
+                                         :match-type (:type match)))))
+                            matching-uris)]
+      concept-matches)
+    ;; Fallback to linear search if trie not available
+    (let [concept-matches (keep
+                            (fn [[uri concept]]
+                              (when-let [match (find-matching-labels prefix concept)]
+                                (assoc concept
+                                       :match-score (:score match)
+                                       :matched-label (:label match)
+                                       :match-type (:type match))))
+                            concepts-map)]
+      concept-matches)))
 
 (defn rank-matches
   "Rank matches by score and alphabetically"
