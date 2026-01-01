@@ -4,7 +4,8 @@
             [grafter-2.rdf.protocols :as pr]
             [clojure.string :as str]
             [clojure.java.io :as io]
-            [reconcile-skos.trie :as trie])
+            [reconcile-skos.trie :as trie]
+            [reconcile-skos.cache :as cache])
   (:import [java.io File]))
 
 ;; SKOS namespace constants
@@ -387,6 +388,8 @@
   "Load a single SKOS vocabulary file and build indexes"
   [file-path]
   (println "Loading SKOS vocabulary from:" file-path)
+  ;; Clear cache on vocabulary reload
+  (cache/clear-cache!)
   (let [data (load-vocabulary-file file-path)
         concepts-map (:concepts data)
         schemes-map (:schemes data)
@@ -407,6 +410,8 @@
   "Load multiple SKOS vocabulary files and merge them into a single index"
   [file-paths]
   (println "Loading" (count file-paths) "SKOS vocabularies...")
+  ;; Clear cache on vocabulary reload
+  (cache/clear-cache!)
   (let [;; Load all files
         all-data (mapv load-vocabulary-file file-paths)
         ;; Merge all concepts and schemes

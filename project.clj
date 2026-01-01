@@ -23,6 +23,9 @@
 
     ;; Fuzzy matching
     [fuzzy-string "0.1.3"]
+
+    ;; Caching
+    [org.clojure/core.cache "1.0.225"]
   ]
 
   :plugins [[lein-ring "0.12.6"]]

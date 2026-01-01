@@ -2,6 +2,7 @@
   "Reconciliation query processing and scoring"
   (:require [fuzzy-string.core :as fuzzy]
             [reconcile-skos.skos :as skos]
+            [reconcile-skos.cache :as cache]
             [clojure.data.json :as json]
             [clojure.string :as str]))
 
@@ -141,11 +142,10 @@
    :type (format-type-for-concept concept)
    :description (or (:definition concept) (:scope-note concept))})
 
-(defn reconcile-query
-  "Process a single reconciliation query"
-  [query-input]
-  (let [parsed (parse-query query-input)
-        query-str (extract-query-string parsed)
+(defn reconcile-query-uncached
+  "Process a single reconciliation query without caching"
+  [parsed]
+  (let [query-str (extract-query-string parsed)
         limit (or (:limit parsed) 5)
         ;; Get all concepts
         all-concepts (vals @skos/concepts)
@@ -164,6 +164,23 @@
         ;; Format results
         candidates (map format-reconciliation-candidate limited)]
     {:result (vec candidates)}))
+
+(defn reconcile-query
+  "Process a single reconciliation query with caching"
+  [query-input]
+  (let [parsed (parse-query query-input)
+        query-str (extract-query-string parsed)
+        type-filter (:type parsed)
+        limit (or (:limit parsed) 5)]
+    ;; Try cache first
+    (if-let [cached (cache/get-cached query-str type-filter limit)]
+      cached
+      ;; Cache miss - compute and cache result
+      (do
+        (cache/record-miss!)
+        (let [result (reconcile-query-uncached parsed)]
+          (cache/put-cached! query-str type-filter limit result)
+          result)))))
 
 (defn reconcile-batch
   "Process multiple reconciliation queries in parallel"
