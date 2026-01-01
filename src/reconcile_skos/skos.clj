@@ -75,11 +75,25 @@
 ;; RDF Loading
 
 (defn load-rdf
-  "Load RDF statements from file (auto-detect format)"
+  "Load RDF statements from file (auto-detect format, fallback to RDF/XML)"
   [file-path]
   (println "Loading RDF from:" file-path)
   (try
     (vec (gio/statements file-path))
+    (catch clojure.lang.ExceptionInfo e
+      ;; If format inference failed, try explicit RDF/XML format
+      ;; (common for .skosxml and other non-standard extensions)
+      (if (= :could-not-infer-file-format (:error (ex-data e)))
+        (do
+          (println "Format auto-detection failed, trying RDF/XML format...")
+          (try
+            (vec (gio/statements file-path :format :rdf))
+            (catch Exception e2
+              (println "Error loading RDF as RDF/XML:" (.getMessage e2))
+              (throw e2))))
+        (do
+          (println "Error loading RDF:" (.getMessage e))
+          (throw e))))
     (catch Exception e
       (println "Error loading RDF:" (.getMessage e))
       (throw e))))
