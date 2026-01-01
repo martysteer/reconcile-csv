@@ -10,7 +10,8 @@
             [reconcile-skos.manifest :as manifest]
             [reconcile-skos.reconcile :as reconcile]
             [reconcile-skos.suggest :as suggest]
-            [reconcile-skos.extend :as extend])
+            [reconcile-skos.extend :as extend]
+            [reconcile-skos.html :as html])
   (:gen-class))
 
 ;; Application state
@@ -122,13 +123,10 @@
   (let [params (:params request)
         id (get params "id")]
     (try
-      ;; TODO: Implement proper HTML preview
-      (html-response
-        (str "<div style='padding: 10px; font-family: sans-serif;'>"
-             "<h3>Concept Preview</h3>"
-             "<p>ID: " id "</p>"
-             "<p>Preview functionality coming soon...</p>"
-             "</div>"))
+      (if-let [concept-entry (skos/get-concept-by-id id)]
+        (let [concept (val concept-entry)]
+          (html-response (html/concept-to-html concept @skos/concepts)))
+        (html-response "<div style='padding: 10px;'>Concept not found</div>"))
       (catch Exception e
         (html-response (str "<div>Error: " (.getMessage e) "</div>"))))))
 
@@ -136,16 +134,19 @@
   "Handle view requests"
   [id]
   (try
-    ;; TODO: Implement proper concept view page
-    (html-response
-      (str "<html><head><title>Concept: " id "</title></head>"
-           "<body style='font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px;'>"
-           "<h1>Concept: " id "</h1>"
-           "<p>Full concept view coming soon...</p>"
-           "<p><a href='/reconcile'>← Back to service</a></p>"
-           "</body></html>"))
+    (if-let [concept-entry (skos/get-concept-by-id id)]
+      (let [concept (val concept-entry)
+            base-uri (:base-uri @config)]
+        (html-response (html/concept-to-full-html concept @skos/concepts base-uri)))
+      (html-response (html/not-found-html id)))
     (catch Exception e
-      (html-response (str "<html><body>Error: " (.getMessage e) "</body></html>")))))
+      (html-response
+        (str "<html><head><title>Error</title></head>"
+             "<body style='font-family: sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px;'>"
+             "<h1>Error</h1>"
+             "<p>" (.getMessage e) "</p>"
+             "<p><a href='/reconcile'>← Back to service</a></p>"
+             "</body></html>")))))
 
 (defn properties-handler
   "Handle property proposal requests"
