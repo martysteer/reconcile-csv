@@ -122,6 +122,15 @@
   [results limit]
   (take (or limit 5) results))
 
+(defn format-type-for-concept
+  "Format type information for a concept based on its FAST facet"
+  [concept]
+  (if-let [facet (:facet concept)]
+    [{:id (str "FAST " facet)
+      :name (str "FAST " facet)}]
+    [{:id "skos:Concept"
+      :name "SKOS Concept"}]))
+
 (defn format-reconciliation-candidate
   "Format a concept as a reconciliation candidate"
   [concept]
@@ -129,7 +138,7 @@
    :name (skos/get-best-label concept)
    :score (:match-score concept)
    :match (>= (:match-score concept) 1.0)  ; Exact match only
-   :type [{:id "skos:Concept" :name "SKOS Concept"}]
+   :type (format-type-for-concept concept)
    :description (or (:definition concept) (:scope-note concept))})
 
 (defn reconcile-query
