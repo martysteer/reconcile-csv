@@ -318,52 +318,106 @@
                  :access-control-allow-methods [:get :post :put :delete :options]
                  :access-control-allow-headers ["Content-Type" "Authorization"])))
 
+;; CLI Argument Parsing
+
+(defn parse-cli-args
+  "Parse command line arguments. Returns {:port <num> :files [...]}"
+  [args]
+  (loop [remaining args
+         port 8000
+         files []]
+    (cond
+      ;; No more arguments
+      (empty? remaining)
+      {:port port :files files}
+
+      ;; --port flag
+      (= (first remaining) "--port")
+      (if (second remaining)
+        (recur (drop 2 remaining)
+               (Integer/parseInt (second remaining))
+               files)
+        (throw (Exception. "--port requires a port number")))
+
+      ;; File argument (doesn't start with --)
+      :else
+      (recur (rest remaining)
+             port
+             (conj files (first remaining))))))
+
 ;; Main Entry Point
 
 (defn -main
-  "Main entry point - load vocabulary and start server"
-  [vocab-file & args]
+  "Main entry point - load vocabularies and start server
+
+  Usage:
+    lein run [--port PORT] <vocab-file> [<vocab-file2> ...]
+
+  Examples:
+    lein run vocab.ttl
+    lein run --port 9000 vocab.ttl
+    lein run file1.skos file2.skos file3.skos
+    lein run --port 9000 file1.skos file2.skos"
+  [& args]
   (try
     (println "\n=== SKOS Reconciliation Service ===")
     (println "Version: 0.2.0")
     (println)
 
-    ;; TODO: Parse CLI arguments (--port, --base-uri, etc.)
-    ;; For now, use defaults
+    ;; Parse CLI arguments
+    (let [parsed (parse-cli-args args)
+          port (:port parsed)
+          vocab-files (:files parsed)]
 
-    ;; Load SKOS vocabulary
-    (println "Loading vocabulary from:" vocab-file)
-    (let [stats (skos/load-vocabulary vocab-file)]
+      ;; Validate we have at least one file
+      (when (empty? vocab-files)
+        (println "ERROR: No vocabulary files specified")
+        (println)
+        (println "Usage: lein run [--port PORT] <vocab-file> [<vocab-file2> ...]")
+        (System/exit 1))
+
+      ;; Update config with CLI port
+      (swap! config assoc :port port :base-uri (str "http://localhost:" port))
+
+      ;; Load SKOS vocabularies
+      (let [stats (if (= 1 (count vocab-files))
+                    ;; Single file
+                    (skos/load-vocabulary (first vocab-files))
+                    ;; Multiple files
+                    (skos/load-vocabularies vocab-files))]
+        (println)
+        (println "Vocabulary loaded successfully:")
+        (println "  - Concepts:" (:concepts stats))
+        (println "  - Concept Schemes:" (:schemes stats))
+        (println "  - Unique Labels:" (:labels stats)))
+
       (println)
-      (println "Vocabulary loaded successfully:")
-      (println "  - Concepts:" (:concepts stats))
-      (println "  - Concept Schemes:" (:schemes stats))
-      (println "  - Unique Labels:" (:labels stats)))
+      (println "Starting HTTP server...")
+      (println "  - Port:" (:port @config))
+      (println "  - Base URL:" (:base-uri @config))
+      (println)
+      (println "Service endpoints:")
+      (println "  - Service manifest: http://localhost:" (:port @config) "/reconcile")
+      (println "  - Landing page: http://localhost:" (:port @config) "/")
+      (println)
+      (println "Add this URL to OpenRefine:")
+      (println "  http://localhost:" (:port @config) "/reconcile")
+      (println)
+      (println "Request logging: ENABLED")
+      (println "  (You'll see all HTTP requests and responses below)")
+      (println)
+      (println "Press Ctrl+C to stop the server")
+      (println "========================================")
+      (println)
 
-    (println)
-    (println "Starting HTTP server...")
-    (println "  - Port:" (:port @config))
-    (println "  - Base URL:" (:base-uri @config))
-    (println)
-    (println "Service endpoints:")
-    (println "  - Service manifest: http://localhost:" (:port @config) "/reconcile")
-    (println "  - Landing page: http://localhost:" (:port @config) "/")
-    (println)
-    (println "Add this URL to OpenRefine:")
-    (println "  http://localhost:" (:port @config) "/reconcile")
-    (println)
-    (println "Request logging: ENABLED")
-    (println "  (You'll see all HTTP requests and responses below)")
-    (println)
-    (println "Press Ctrl+C to stop the server")
-    (println "========================================")
-    (println)
-
-    ;; Start Jetty server
-    (run-jetty app {:port (:port @config) :join? true})
+      ;; Start Jetty server
+      (run-jetty app {:port (:port @config) :join? true}))
 
     (catch java.io.FileNotFoundException e
-      (println "ERROR: Vocabulary file not found:" vocab-file)
+      (println "ERROR: Vocabulary file not found:" (.getMessage e))
+      (System/exit 1))
+    (catch NumberFormatException e
+      (println "ERROR: Invalid port number")
       (System/exit 1))
     (catch Exception e
       (println "ERROR:" (.getMessage e))

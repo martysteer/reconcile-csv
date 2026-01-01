@@ -255,17 +255,26 @@
 
 ;; Public API
 
-(defn load-vocabulary
-  "Load a SKOS vocabulary file and build indexes"
+(defn load-vocabulary-file
+  "Load a SKOS vocabulary file and return extracted data (does not modify atoms)"
   [file-path]
-  (println "Loading SKOS vocabulary from:" file-path)
+  (println "  Loading:" file-path)
   (let [triples (load-rdf file-path)
-        _ (println "Loaded" (count triples) "RDF triples")
+        _ (println "    Loaded" (count triples) "RDF triples")
         extracted (extract-concepts triples)
         concepts-map (:concepts extracted)
         schemes-map (:schemes extracted)
-        _ (println "Found" (count concepts-map) "SKOS concepts")
-        _ (println "Found" (count schemes-map) "concept schemes")
+        _ (println "    Found" (count concepts-map) "SKOS concepts," (count schemes-map) "concept schemes")]
+    {:concepts concepts-map
+     :schemes schemes-map}))
+
+(defn load-vocabulary
+  "Load a single SKOS vocabulary file and build indexes"
+  [file-path]
+  (println "Loading SKOS vocabulary from:" file-path)
+  (let [data (load-vocabulary-file file-path)
+        concepts-map (:concepts data)
+        schemes-map (:schemes data)
         idx (build-label-index concepts-map)
         _ (println "Built label index with" (count idx) "unique labels")]
     (reset! concepts concepts-map)
@@ -273,6 +282,29 @@
     (reset! label-index idx)
     {:concepts (count concepts-map)
      :schemes (count schemes-map)
+     :labels (count idx)}))
+
+(defn load-vocabularies
+  "Load multiple SKOS vocabulary files and merge them into a single index"
+  [file-paths]
+  (println "Loading" (count file-paths) "SKOS vocabularies...")
+  (let [;; Load all files
+        all-data (mapv load-vocabulary-file file-paths)
+        ;; Merge all concepts and schemes
+        merged-concepts (apply merge (map :concepts all-data))
+        merged-schemes (apply merge (map :schemes all-data))
+        ;; Build unified index
+        _ (println "Building unified label index...")
+        idx (build-label-index merged-concepts)
+        _ (println "  Total concepts:" (count merged-concepts))
+        _ (println "  Total concept schemes:" (count merged-schemes))
+        _ (println "  Total unique labels:" (count idx))]
+    ;; Update atoms with merged data
+    (reset! concepts merged-concepts)
+    (reset! concept-schemes merged-schemes)
+    (reset! label-index idx)
+    {:concepts (count merged-concepts)
+     :schemes (count merged-schemes)
      :labels (count idx)}))
 
 (defn get-concept

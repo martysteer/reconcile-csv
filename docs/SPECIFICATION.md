@@ -224,30 +224,62 @@ Exposed SKOS properties for data extension:
 ### Command Line Interface
 
 ```bash
-java -Xmx2g -jar reconcile-skos.jar <vocabulary-file> [options]
-
-Options:
-  --port PORT           HTTP port (default: 8000)
-  --base-uri URI        Base URI for concept identifiers
-  --scheme-uri URI      Concept scheme URI (optional, auto-detect)
-  --lang LANG           Preferred language code (default: all)
-  --id-property PROP    Property to use for IDs (default: URI fragment)
+lein run [--port PORT] <vocabulary-file> [<vocabulary-file2> ...]
 ```
+
+**Arguments:**
+- `<vocabulary-file>` - One or more SKOS/RDF vocabulary files to load
+- `--port PORT` - HTTP server port (default: 8000)
+
+**Features:**
+- **Multiple vocabulary files**: Load and merge multiple SKOS files into a unified reconciliation index
+- **Custom port**: Specify a different port for the HTTP server
+- **Auto-format detection**: Automatically detects RDF format from file extension
+- **Fallback to RDF/XML**: Non-standard extensions (e.g., `.skosxml`) automatically try RDF/XML format
 
 ### Example Usage
 
 ```bash
-# Load a Turtle vocabulary
-java -jar reconcile-skos.jar vocabulary.ttl
+# Load a single vocabulary file (default port 8000)
+lein run vocabulary.ttl
 
-# Load RDF/XML with custom base URI
-java -jar reconcile-skos.jar vocabulary.rdf --base-uri http://example.org/vocab/
+# Load a single file with custom port
+lein run --port 9000 vocabulary.ttl
 
-# Load with language preference
-java -jar reconcile-skos.jar vocabulary.ttl --lang en
+# Load multiple vocabulary files and merge them
+lein run file1.ttl file2.ttl file3.ttl
 
-# Specify port
-java -jar reconcile-skos.jar vocabulary.ttl --port 3000
+# Load FAST chronological and geographic vocabularies
+lein run FASTChronological.skosxml FASTGeographic.skosxml
+
+# Load multiple files with custom port
+lein run --port 9000 vocab1.rdf vocab2.ttl vocab3.skosxml
+
+# All FAST vocabularies on custom port
+lein run --port 8080 FAST*.skosxml
+```
+
+**Multiple File Loading:**
+When loading multiple vocabulary files, the service will:
+1. Load each file sequentially
+2. Merge all concepts into a unified in-memory index
+3. Merge all ConceptSchemes (displayed as types in OpenRefine)
+4. Build a single label index across all vocabularies
+5. Report total counts: concepts, schemes, and unique labels
+
+**Output Example:**
+```
+Loading 2 SKOS vocabularies...
+  Loading: FASTChronological.skosxml
+    Loaded 6287 RDF triples
+    Found 695 SKOS concepts, 1 concept schemes
+  Loading: FASTFormGenre.skosxml
+    Loaded 59228 RDF triples
+    Found 7437 SKOS concepts, 1 concept schemes
+Building unified label index...
+  Total concepts: 8132
+  Total concept schemes: 1
+  Total unique labels: 11776
 ```
 
 ## Dependencies
