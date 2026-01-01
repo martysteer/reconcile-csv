@@ -30,5 +30,7 @@
   :aot [reconcile-skos.core]
 
   ;; Java 17+ required
-  :jvm-opts ["-Xmx2g"])
+  ;; Increased to 4GB for large vocabulary files (e.g., FAST)
+  ;; For very large files (>500MB), consider increasing to 8GB: -Xmx8g
+  :jvm-opts ["-Xmx4g"])
   

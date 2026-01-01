@@ -2,7 +2,9 @@
   "SKOS vocabulary parsing and indexing using Grafter"
   (:require [grafter-2.rdf4j.io :as gio]
             [grafter-2.rdf.protocols :as pr]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.java.io :as io])
+  (:import [java.io File]))
 
 ;; SKOS namespace constants
 (def skos-ns "http://www.w3.org/2004/02/skos/core#")
@@ -34,6 +36,12 @@
 (def concepts (atom {}))
 (def concept-schemes (atom {}))
 (def label-index (atom {}))
+
+;; Streaming threshold (10MB)
+(def streaming-threshold-bytes (* 10 1024 1024))
+
+;; Override for streaming mode (can be set via CLI)
+(def force-streaming (atom nil))
 
 ;; Helper functions
 
@@ -78,6 +86,67 @@
   [label]
   (str/lower-case (str/trim label)))
 
+;; Memory Monitoring
+
+(defn get-memory-usage-mb
+  "Get current memory usage in MB"
+  []
+  (let [runtime (Runtime/getRuntime)
+        used-memory (- (.totalMemory runtime) (.freeMemory runtime))]
+    (/ used-memory 1024.0 1024.0)))
+
+(defn get-max-memory-mb
+  "Get maximum available memory in MB"
+  []
+  (let [runtime (Runtime/getRuntime)
+        max-memory (.maxMemory runtime)]
+    (/ max-memory 1024.0 1024.0)))
+
+(defn get-memory-usage-percent
+  "Get memory usage as percentage"
+  []
+  (let [runtime (Runtime/getRuntime)
+        max-memory (.maxMemory runtime)
+        used-memory (- (.totalMemory runtime) (.freeMemory runtime))]
+    (* 100.0 (/ used-memory max-memory))))
+
+(defn warn-if-low-memory
+  "Print warning if memory usage is high"
+  []
+  (let [usage-pct (get-memory-usage-percent)]
+    (when (> usage-pct 80.0)
+      (println (format "⚠ WARNING: Memory usage high (%.1f%%)" usage-pct))
+      (println (format "  Used: %.1fMB / Max: %.1fMB"
+                       (get-memory-usage-mb)
+                       (get-max-memory-mb))))))
+
+(defn print-memory-stats
+  "Print current memory statistics"
+  []
+  (println (format "  Memory: %.1fMB used / %.1fMB max (%.1f%%)"
+                   (get-memory-usage-mb)
+                   (get-max-memory-mb)
+                   (get-memory-usage-percent))))
+
+;; File Size Detection
+
+(defn get-file-size-bytes
+  "Get file size in bytes"
+  [file-path]
+  (.length (io/file file-path)))
+
+(defn get-file-size-mb
+  "Get file size in MB"
+  [file-path]
+  (/ (get-file-size-bytes file-path) 1024.0 1024.0))
+
+(defn should-use-streaming?
+  "Determine if streaming mode should be used based on file size"
+  [file-path]
+  (if-let [forced @force-streaming]
+    forced
+    (> (get-file-size-bytes file-path) streaming-threshold-bytes)))
+
 ;; RDF Loading
 
 (defn load-rdf
@@ -102,6 +171,38 @@
           (throw e))))
     (catch Exception e
       (println "Error loading RDF:" (.getMessage e))
+      (throw e))))
+
+(defn load-rdf-streaming
+  "Load RDF statements from file in streaming mode with progress reporting"
+  [file-path chunk-size]
+  (println "Loading RDF in streaming mode from:" file-path)
+  (println (format "  File size: %.1fMB" (get-file-size-mb file-path)))
+  (try
+    (let [statements-seq (try
+                          (gio/statements file-path)
+                          (catch clojure.lang.ExceptionInfo e
+                            (if (= :could-not-infer-file-format (:error (ex-data e)))
+                              (do
+                                (println "Format auto-detection failed, trying RDF/XML format...")
+                                (gio/statements file-path :format :rdf))
+                              (throw e))))
+          ;; Process in chunks with progress reporting
+          processed (atom 0)
+          result (doall
+                   (map-indexed
+                     (fn [idx stmt]
+                       (when (zero? (mod idx chunk-size))
+                         (swap! processed + chunk-size)
+                         (println (format "    Processed %,d triples..." @processed))
+                         (print-memory-stats)
+                         (warn-if-low-memory))
+                       stmt)
+                     statements-seq))]
+      (println (format "    Total: %,d triples loaded" (count result)))
+      (vec result))
+    (catch Exception e
+      (println "Error loading RDF in streaming mode:" (.getMessage e))
       (throw e))))
 
 ;; Triple Filtering
@@ -266,7 +367,12 @@
   "Load a SKOS vocabulary file and return extracted data (does not modify atoms)"
   [file-path]
   (println "  Loading:" file-path)
-  (let [triples (load-rdf file-path)
+  (let [use-streaming (should-use-streaming? file-path)
+        _ (when use-streaming
+            (println "  Using streaming mode (file > 10MB)"))
+        triples (if use-streaming
+                  (load-rdf-streaming file-path 50000)  ; Progress every 50k triples
+                  (load-rdf file-path))
         _ (println "    Loaded" (count triples) "RDF triples")
         extracted (extract-concepts triples)
         concepts-map (:concepts extracted)
