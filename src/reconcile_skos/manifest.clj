@@ -10,26 +10,32 @@
       (subs base 0 (dec (count base)))
       base)))
 
-(defn format-concept-scheme-type
-  "Format a ConceptScheme as a type object"
-  [[uri scheme]]
-  {:id (:id scheme)
-   :name (or (:value (first (:labels scheme)))
-             (:id scheme))})
+(defn get-unique-facets
+  "Get unique FAST facet values from loaded concepts"
+  []
+  (let [all-concepts (vals @skos/concepts)
+        facets (set (keep :facet all-concepts))]  ; keep removes nil values
+    (sort facets)))
+
+(defn format-facet-as-type
+  "Format a FAST facet as a type object with 'FAST ' prefix"
+  [facet]
+  {:id (str "FAST " facet)
+   :name (str "FAST " facet)})
 
 (defn get-default-types
-  "Get default types from loaded ConceptSchemes"
+  "Get default types from loaded FAST facets"
   []
-  (let [schemes @skos/concept-schemes]
-    (if (empty? schemes)
-      ;; No schemes loaded, return generic SKOS Concept type
+  (let [facets (get-unique-facets)]
+    (if (empty? facets)
+      ;; No facets found, return generic SKOS Concept type
       [{:id "skos:Concept"
         :name "SKOS Concept"}]
-      ;; Include both generic SKOS Concept and specific ConceptSchemes
+      ;; Include both generic SKOS Concept and specific FAST facets
       (cons
         {:id "skos:Concept"
          :name "SKOS Concept"}
-        (map format-concept-scheme-type schemes)))))
+        (map format-facet-as-type facets)))))
 
 (defn service-manifest
   "Generate the service manifest for W3C Reconciliation API v0.2"
